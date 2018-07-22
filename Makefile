@@ -6,12 +6,16 @@ FT_NM := ft_nm
 NM_SRC_PATH := srcs/nm
 NM_OBJ_PATH := .bin/nm
 
-NM_SRCS_NAMES :=	errors.c	\
-					main.c		\
+#NM_SRCS_NAMES :=	errors.c		\
+					main.c			\
 
-NM_INCS :=	nm/errors.h		\
-			nm/nm.h			\
-			nm/obj_defs.h	\
+NM_SRCS_NAMES :=	errors.c		\
+					main.c			\
+					object_check.c	\
+					print_symbol.c	\
+					sort.c			\
+
+NM_INCS :=	nm/nm.h			\
 
 NM_SRCS := $(addprefix $(NM_SRC_PATH)/,$(NM_SRCS_NAMES))
 NM_OBJS := $(addprefix $(NM_OBJ_PATH)/,$(NM_SRCS_NAMES:.c=.o))
@@ -37,7 +41,7 @@ LIBFT_MODULES := base
 
 ### COMMON DEFS ###
 CPPFLAGS := -iquote$(INC_PATH) -isystem$(LIBFT_PATH)/includes
-CFLAGS :=	-Wall -Wextra -Werror -Wmissing-prototypes -Wsign-conversion -g -O3
+CFLAGS :=	-Wall -Wextra -Werror -Wmissing-prototypes -Wsign-conversion -O3
 LDFLAGS :=	-L$(LIBFT_PATH) -l$(LIBFT_NAME)
 
 ### COMMANDS ##

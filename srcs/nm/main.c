@@ -6,7 +6,7 @@
 /*   By: yguaye <yguaye@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2018/07/17 11:34:06 by yguaye            #+#    #+#             */
-/*   Updated: 2018/07/17 19:25:24 by yguaye           ###   ########.fr       */
+/*   Updated: 2018/07/22 01:49:58 by yguaye           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,114 +19,80 @@
 #include <mach-o/nlist.h>
 #include <libft_base/io.h>
 #include <mach-o/loader.h>
-#include "nm/errors.h"
-#include "nm/obj_defs.h"
+#include "nm/nm.h"
 
-#include <stdio.h>
-
-static int				nm_filesize(int fd, size_t *fsize)
+static int				nm_filesize(int fd, uint64_t *fsize)
 {
 	struct stat			st;
 
 	if (fstat(fd, &st) == -1)
 		return (0);
-	*fsize = (size_t)st.st_size;
+	*fsize = (uint64_t)st.st_size;
 	return (1);
 }
 
-static void				nm_obj_print_sym(const void *obj,
-		const struct symtab_command *s)
+static int				nm_parse_obj_header(t_macho64_obj *obj, int print_file)
 {
-	const struct nlist_64	*sym;
-	const char				*str_table;
-	uint32_t				i;
-
-	sym = (const struct nlist_64 *)((const char *)obj + s->symoff);
-	str_table = (const char *)obj + s->stroff;
-	i = 0;
-	while (i < s->nsyms)
-	{
-/*		printf("offset: %8lx\n", (char *)(sym + i) - (char *)obj);
-		printf("str table index: %x\n", sym[i].n_un.n_strx);*/
-		printf("%s\n", str_table + sym[i].n_un.n_strx);
-		++i;
-	}
-}
-
-static int				nm_obj_header_check(const t_nm_header *h)
-{
-	if (h->magic == MH_MAGIC_64 && h->filetype == MH_OBJECT)
-		return (1);
-	return (0);
-}
-
-static t_nm_errtype		nm_parse_obj_header(const void *obj)
-{
-	const t_nm_header	*h;
-	const t_nm_lcmd		*lc;
+	const t_mlcmd		*lc;
 	uint32_t			i;
 
-	h = (const t_nm_header *)obj;
-	if (!nm_obj_header_check(h))
-		return (NMERR_BAD_OBJ);
-	lc = (const t_nm_lcmd *)(h + 1);
+	lc = obj->lcmds;
 	i = 0;
-	while (i < h->ncmds)
+	while (i < obj->header->ncmds)
 	{
 		if (lc->cmd == LC_SYMTAB)
 		{
-			nm_obj_print_sym(obj, (const struct symtab_command *)lc);
+			if (!nm_obj_print_syms(obj, (const struct symtab_command *)lc,
+						print_file))
+				return (0);
 			break ;
 		}
-		lc = (const t_nm_lcmd *)((const char *)lc + lc->cmdsize);
+		lc = (const t_mlcmd *)((const char *)lc + lc->cmdsize);
 		++i;
 	}
-	return (NMERR_OK);
+	return (1);
 }
 
-static t_nm_errtype		ft_nm(const char *file)
+static int				ft_nm(const char *path, int print_file)
 {
 	int					fd;
-	size_t				fsize;
-	void				*buf;
-	t_nm_errtype		err;
+	t_macho64_obj		obj;
+	int					err;
 
-	if ((fd = open(file, O_RDONLY)) == -1)
-		return (NMERR_NO_FILE);
-	if (!nm_filesize(fd, &fsize))
+	obj.name = path;
+	if ((fd = open(path, O_RDONLY)) == -1)
+		return (nm_perror(path, "No such file or directory."));
+	if (!nm_filesize(fd, &obj.size))
 	{
 		close(fd);
-		return (NMERR_STAT_FAIL);
+		return (nm_perror(path, "fstat() failed."));
 	}
-	if ((buf = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED)
+	if ((obj.header = mmap(NULL, obj.size, PROT_READ,
+					MAP_PRIVATE, fd, 0)) == MAP_FAILED)
 	{
 		close(fd);
-		return (NMERR_MMAP_FAIL);
+		return (nm_perror(path, "mmap failed()."));
 	}
-	err = nm_parse_obj_header(buf);
-	munmap(buf, fsize);
+	if ((err = nm_check_object(&obj)))
+		err = nm_parse_obj_header(&obj, print_file);
+	munmap((void *)obj.header, obj.size);
 	close(fd);
 	return (err);
 }
 
 int						main(int ac, char **av)
 {
-	t_nm_errtype		ret;
-	t_nm_errtype		tmp;
+	int					ret;
 	int					i;
 
-	if (ac == 1 && !((ret = ft_nm("a.out")) * 0))
-		return (ret == NMERR_OK ? EXIT_SUCCESS :
-				nm_perror("a.out", ret, EXIT_FAILURE));
-	ret = NMERR_OK;
+	if (ac == 1)
+		return (ft_nm("a.out", 0) ? EXIT_SUCCESS : EXIT_FAILURE);
 	i = 0;
+	ret = 1;
 	while (++i < ac)
 	{
-		if ((tmp = ft_nm(av[i])) != NMERR_OK)
-		{
-			nm_perror(av[i], tmp, 0);
-			ret = tmp;
-		}
+		if (!ft_nm(av[i], ac > 2))
+			ret = 0;
 	}
-	return (ret == NMERR_OK ? EXIT_SUCCESS : EXIT_FAILURE);
+	return (ret ? EXIT_SUCCESS : EXIT_FAILURE);
 }
